@@ -1,6 +1,6 @@
-WarcQtViwer License
-===================
-WarcQtViwer is released under the terms of the ISC license:
+WarcQtViewer License
+====================
+WarcQtViewer is released under the terms of the ISC license:
 
 Copyright (c) 2013 David Bern
 
