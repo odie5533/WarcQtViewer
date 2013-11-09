@@ -8,40 +8,16 @@ import pkg_resources  # Necessary for py2exe. Used by warctools @UnusedImport
 from hanzo.warctools import WarcRecord
 from hanzo.httptools import RequestMessage, ResponseMessage
 
+from warcmanager import MetaRecordInfo, WarcReplayHandler, dump
+from warcreplay import ReplayServerFactory
 
-def dump(record, content=True):
-    """ Dumps a warctools WarcRecord to a string """
-    s = 'Headers:\n'
-    for (h, v) in record.headers:
-        s += '\t%s:%s\n' % (h, v)
-    if content and record.content:
-        s += 'Content Headers:\n'
-        content_type, content_body = record.content
-        s += '\t %s: %s\n' % (record.CONTENT_TYPE, content_type)
-        s += '\t %s: %s\n' % (record.CONTENT_LENGTH, len(content_body))
-        s += 'Content:\n'
-        ln = min(2048, len(content_body))
-        s += content_body[:ln]
-        if ln < len(content_body):
-            s += '\t...\n'
-    else:
-        s += 'Content: none\n\n'
-    if record.errors:
-        print 'Errors:'
-        for e in record.errors:
-            s += '\t%s\n' % str(e)
-    return s
-
-class WarcRecordItem(QtGui.QStandardItem):
-    def __init__(self, rtype, offset, filename, uri=None):
+class WarcRecordItem(QtGui.QStandardItem, MetaRecordInfo):
+    def __init__(self, *args, **kwargs):
         """
         Creates a generic representation of a WARC Record
         """
-        self.rtype = rtype
-        self.offset = offset
-        self.filename = filename
-        self.uri = uri
-        super(WarcRecordItem, self).__init__()
+        MetaRecordInfo.__init__(self, *args, **kwargs)
+        QtGui.QStandardItem.__init__(self)
     
     def toString(self):
         return self.rtype + (': ' + self.uri if self.uri else '')
@@ -50,7 +26,7 @@ class WarcRecordItem(QtGui.QStandardItem):
         if i == QtCore.Qt.DisplayRole:
             return self.toString()
         else:
-            return super(WarcRecordItem, self).data(i)
+            return QtGui.QStandardItem.data(self, i)
 
 class TwistedApp(QtCore.QObject):
     def __init__(self):
@@ -84,6 +60,13 @@ class TwistedApp(QtCore.QObject):
         
         self.show = self.ui.show
         
+        self.wrp = WarcReplayHandler()
+        self.wrp.metarecordinfo = WarcRecordItem
+        
+        self.rsf = ReplayServerFactory(wrp=self.wrp)
+        reactor.listenTCP(1080, self.rsf)
+        print reactor
+        
     def setProxy(self, port):
         proxy = QtNetwork.QNetworkProxy()
         proxy.setType(QtNetwork.QNetworkProxy.HttpProxy)
@@ -91,29 +74,16 @@ class TwistedApp(QtCore.QObject):
         proxy.setPort(port)
         QtNetwork.QNetworkProxy.setApplicationProxy(proxy)
         
-    def loadWarcFile(self, name):
-        """ Generator function for records from the file 'name' """
-        f = WarcRecord.open_archive(name, gzip="auto")
-        for (offset, r, err) in f.read_records(limit=None):
-            print offset
-            if err:
-                print "warc errors at %s:%d" % (name, offset or 0)
-                for e in err:
-                    print '\t', e
-            if r:
-                yield WarcRecordItem(r.type, offset, name, r.url)
-        f.close()
-        
     def showItem(self, index):
         i = index.model().itemFromIndex(index) # QStandardItem
-        r = self.recordFromWarcRecordItem(i)
+        r = self.wrp.readRecord(i.filename, i.offset)
         self.ui.plainTextEdit.setPlainText(dump(r))
         
     def previewItem(self, index):
         i = index.model().itemFromIndex(index) # QStandardItem
         self.showWebView()
         self.gotoUrl(i.uri)
-        
+    
     def openAction(self):
         """ Called when the Open button is pressed in the menu """
         f = QtGui.QFileDialog.getOpenFileName(None, "Open Image", "",
@@ -121,7 +91,8 @@ class TwistedApp(QtCore.QObject):
         if not f or not f[0]: # f[0] might be ''
             return
         self.model.clear()
-        for o in self.loadWarcFile(f[0]): # f is a tuple. first part is the name
+        self.wrp.loadWarcFile(f[0])
+        for o in self.wrp.metaRecords: # f is a tuple. first part is the name
             self.model.appendRow(o)
             
     @staticmethod
@@ -130,17 +101,6 @@ class TwistedApp(QtCore.QObject):
         if '.' not in n:
             n += '.html'
         return n
-    
-    def recordFromWarcRecordItem(self, i):
-        return self.readSingleWarcRecord(i.filename, i.offset)
-    
-    @staticmethod
-    def readSingleWarcRecord(filename, offset):
-        w = WarcRecord.open_archive(filename, offset=offset)
-        g = w.read_records(limit=1)
-        r = g.next()[1]
-        w.close()
-        return r
 
     def actionExtract(self):
         item = self.ui.listView.selectionModel().currentIndex()
@@ -152,7 +112,7 @@ class TwistedApp(QtCore.QObject):
         if not i or i.rtype != WarcRecord.RESPONSE:
             print "Please select a response record to extract"
             return
-        r = self.recordFromWarcRecordItem(i)
+        r = self.wrp.readRecord(i.filename, i.offset)
         m = ResponseMessage(RequestMessage())
         m.feed(r.content[1])
         m.close()
@@ -172,8 +132,7 @@ class TwistedApp(QtCore.QObject):
         
         f = open(ret[0], 'wb')
         f.write(b)
-        f.close()
-        
+        f.close()        
         
     def showWebView(self):
         if self.webView is None:
@@ -186,17 +145,17 @@ class TwistedApp(QtCore.QObject):
 if __name__ == "__main__":
     # Thanks to https://groups.google.com/forum/#!msg/pyinstaller/fbl5XOOSAtk/zstUlkcHIN4J
     # This stuff is required for the PyInstaller exe to work.
-    from twisted.internet import reactor  # @UnusedImport
     del sys.modules['twisted.internet.reactor']
-    #
     
     app = QtGui.QApplication(sys.argv)
     
     import qt4reactor
     qt4reactor.install()
+    
+    from twisted.internet import reactor
 
     myapp = TwistedApp()
     myapp.show()
     
     sys.exit(app.exec_())
-    #reactor.runReturn()
+    #reactor.run()
