@@ -32,25 +32,22 @@ class TwistedApp(QtCore.QObject):
     def __init__(self):
         QtCore.QObject.__init__(self, None)
         
-        if getattr(sys, 'frozen', False) and getattr(sys, '_MEIPASS', False):
-            basedir = sys._MEIPASS  # @UndefinedVariable
-        else:
-            try:
-                basedir = os.path.dirname(__file__)
-            except:
-                basedir = ""
+        port = 1080
+        
         # dynamically loads a Qt ui file without compiling it to python:
         loader = QtUiTools.QUiLoader()
-        f = QtCore.QFile(os.path.join(basedir, "mainwindow.ui"))
+        f = QtCore.QFile(os.path.join(self.getBaseDir(), "mainwindow.ui"))
         f.open(QtCore.QFile.ReadOnly)
         self.ui = loader.load(f)
         f.close()
         
-        self.setProxy(1080)
-        self.webView = None
+        self.webViewShowing = False
+        
+        self.webView = self.createWebView(port)
         
         self.ui.actionOpen.triggered.connect(self.openAction)
         self.ui.actionExtract.triggered.connect(self.actionExtract)
+        self.ui.actionClear.triggered.connect(self.actionClear)
         
         self.model = QtGui.QStandardItemModel()
         self.ui.listView.setModel(self.model)
@@ -64,15 +61,32 @@ class TwistedApp(QtCore.QObject):
         self.wrp.metarecordinfo = WarcRecordItem
         
         self.rsf = ReplayServerFactory(wrp=self.wrp)
-        reactor.listenTCP(1080, self.rsf)
-        print reactor
+        reactor.listenTCP(port, self.rsf)
         
-    def setProxy(self, port):
+    @staticmethod
+    def getBaseDir():
+        if getattr(sys, 'frozen', False) and getattr(sys, '_MEIPASS', False):
+            return sys._MEIPASS  # @UndefinedVariable
+        else:
+            try:
+                return os.path.dirname(__file__)
+            except:
+                return ""
+            
+    def createWebView(self, port=1080):
+        """ This webView ignores all SSL errors """
+        w = QtWebKit.QWebView()
+        nam = w.page().networkAccessManager()
         proxy = QtNetwork.QNetworkProxy()
         proxy.setType(QtNetwork.QNetworkProxy.HttpProxy)
         proxy.setHostName("127.0.0.1")
         proxy.setPort(port)
-        QtNetwork.QNetworkProxy.setApplicationProxy(proxy)
+        nam.setProxy(proxy)
+        nam.sslErrors.connect(self.sslErrorHandler)
+        return w
+    
+    def sslErrorHandler(self, reply, errors):
+        reply.ignoreSslErrors()
         
     def showItem(self, index):
         i = index.model().itemFromIndex(index) # QStandardItem
@@ -94,6 +108,10 @@ class TwistedApp(QtCore.QObject):
         self.wrp.loadWarcFile(f[0])
         for o in self.wrp.metaRecords: # f is a tuple. first part is the name
             self.model.appendRow(o)
+            
+    def actionClear(self):
+        self.model.clear()
+        self.wrp.clear()
             
     @staticmethod
     def urlToFilename(url):
@@ -135,8 +153,7 @@ class TwistedApp(QtCore.QObject):
         f.close()        
         
     def showWebView(self):
-        if self.webView is None:
-            self.webView = QtWebKit.QWebView(self.ui.splitter_right)
+        if not self.webViewShowing:
             self.ui.splitter_right.addWidget(self.webView)
 
     def gotoUrl(self, url):

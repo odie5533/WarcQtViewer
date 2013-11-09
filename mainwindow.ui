@@ -101,6 +101,7 @@
      <string>File</string>
     </property>
     <addaction name="actionOpen"/>
+    <addaction name="actionClear"/>
    </widget>
    <widget class="QMenu" name="menuRecord">
     <property name="title">
@@ -120,6 +121,11 @@
   <action name="actionExtract">
    <property name="text">
     <string>Extract</string>
+   </property>
+  </action>
+  <action name="actionClear">
+   <property name="text">
+    <string>Clear</string>
    </property>
   </action>
  </widget>
