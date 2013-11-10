@@ -41,8 +41,9 @@ class TwistedApp(QtCore.QObject):
         f = QtCore.QFile(os.path.join(self.getBaseDir(), "mainwindow.ui"))
         f.open(QtCore.QFile.ReadOnly)
         self.ui = loader.load(f)
+        assert isinstance(self.ui, QtGui.QMainWindow)
         f.close()
-        
+
         self.webViewShowing = False
         
         self.webView = self.createWebView(port)
@@ -78,9 +79,13 @@ class TwistedApp(QtCore.QObject):
                 return ""
             
     def createWebView(self, port=1080):
-        """ This webView ignores all SSL errors """
+        """
+        This webView ignores all SSL errors
+        :rtype : QtWebKit.QWebView
+        """
         w = QtWebKit.QWebView()
         nam = w.page().networkAccessManager()
+        assert isinstance(nam, QtNetwork.QNetworkAccessManager)
         proxy = QtNetwork.QNetworkProxy()
         proxy.setType(QtNetwork.QNetworkProxy.HttpProxy)
         proxy.setHostName("127.0.0.1")
@@ -90,30 +95,40 @@ class TwistedApp(QtCore.QObject):
         return w
     
     def sslErrorHandler(self, reply, _):
+        """
+        :type reply: QtNetwork.QNetworkReply
+        """
         reply.ignoreSslErrors()
         
     def showItem(self, index):
-        """ Called when an item is single-clicked """
-        i = index.model().itemFromIndex(index)  # QStandardItem
+        """
+        Called when an item is single-clicked
+        :type index: QtCore.QModelIndex
+        """
+        i = index.model().itemFromIndex(index)
+        """:type : WarcRecordItem"""
         r = self.wrp.readRecord(i.filename, i.offset)
         self.ui.plainTextEdit.setPlainText(dump(r))
-        
+
     def previewItem(self, index):
-        """ Called when an item is double-clicked """
-        i = index.model().itemFromIndex(index) # QStandardItem
+        """
+        Called when an item is double-clicked
+        :type index: QtCore.QModelIndex
+        """
+        i = index.model().itemFromIndex(index)
+        """:type : WarcRecordItem"""
         self.showWebView()
         self.gotoUrl(i.uri)
     
     def openAction(self):
         """ Called when the Open button is pressed in the menu """
         filt = "WARC files (*.warc *.warc.gz)\nAny files (*)"
-        f = QtGui.QFileDialog.getOpenFileName(None, "Open Image", "", filt)
-        if not f or not f[0]:  # f[0] might be ''
+        f, _ = QtGui.QFileDialog.getOpenFileName(None, "Open WARC", "", filt)
+        if not f:
             return
         self.model.clear()
-        self.wrp.loadWarcFile(f[0])
-        for o in self.wrp.metaRecords:  # f is a tuple. first part is the name
-            self.model.appendRow(o)
+        self.wrp.loadWarcFile(f)
+        map(self.model.appendRow, self.wrp.metaRecords)
             
     def actionClear(self):
         self.model.clear()
@@ -121,6 +136,11 @@ class TwistedApp(QtCore.QObject):
             
     @staticmethod
     def urlToFilename(url):
+        """
+        Creates a filename of sorts from a given url
+        :type url: str
+        :rtype: str
+        """
         n = url.rsplit('/', 1)[1]
         if '.' not in n:
             n += '.html'
@@ -133,6 +153,7 @@ class TwistedApp(QtCore.QObject):
             print "No item selected for extraction"
             return
         i = item.model().itemFromIndex(item)
+        """:type : WarcRecordItem"""
         
         if not i or i.rtype != 'response':
             print "Please select a response record to extract"
