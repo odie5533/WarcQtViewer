@@ -11,6 +11,7 @@ import pkg_resources  # Necessary for py2exe. Used by warctools @UnusedImport
 from warcreplay.warcmanager import MetaRecordInfo, WarcReplayHandler, dump
 from warcreplay.warcreplay import ReplayServerFactory
 
+
 class WarcRecordItem(QtGui.QStandardItem, MetaRecordInfo):
     def __init__(self, *args, **kwargs):
         """
@@ -27,6 +28,7 @@ class WarcRecordItem(QtGui.QStandardItem, MetaRecordInfo):
             return self.toString()
         else:
             return QtGui.QStandardItem.data(self, i)
+
 
 class TwistedApp(QtCore.QObject):
     def __init__(self):
@@ -87,12 +89,12 @@ class TwistedApp(QtCore.QObject):
         nam.sslErrors.connect(self.sslErrorHandler)
         return w
     
-    def sslErrorHandler(self, reply, errors):
+    def sslErrorHandler(self, reply, _):
         reply.ignoreSslErrors()
         
     def showItem(self, index):
         """ Called when an item is single-clicked """
-        i = index.model().itemFromIndex(index) # QStandardItem
+        i = index.model().itemFromIndex(index)  # QStandardItem
         r = self.wrp.readRecord(i.filename, i.offset)
         self.ui.plainTextEdit.setPlainText(dump(r))
         
@@ -104,13 +106,13 @@ class TwistedApp(QtCore.QObject):
     
     def openAction(self):
         """ Called when the Open button is pressed in the menu """
-        f = QtGui.QFileDialog.getOpenFileName(None, "Open Image", "",
-                                 "WARC files (*.warc *.warc.gz)\nAny files (*)")
-        if not f or not f[0]: # f[0] might be ''
+        filt = "WARC files (*.warc *.warc.gz)\nAny files (*)"
+        f = QtGui.QFileDialog.getOpenFileName(None, "Open Image", "", filt)
+        if not f or not f[0]:  # f[0] might be ''
             return
         self.model.clear()
         self.wrp.loadWarcFile(f[0])
-        for o in self.wrp.metaRecords: # f is a tuple. first part is the name
+        for o in self.wrp.metaRecords:  # f is a tuple. first part is the name
             self.model.appendRow(o)
             
     def actionClear(self):
@@ -135,15 +137,14 @@ class TwistedApp(QtCore.QObject):
         if not i or i.rtype != 'response':
             print "Please select a response record to extract"
             return
-        ret = QtGui.QFileDialog.getSaveFileName(None,
-                      "Save url response from " + i.uri,
-                      self.urlToFilename(i.uri),
-                      "")
+        title = "Save url response from " + i.uri
+        ret = QtGui.QFileDialog.getSaveFileName(None, title,
+                                                self.urlToFilename(i.uri),
+                                                "")
         if not ret or not ret[0]:
             return
         
-        r = self.wrp.readRecord(i.filename, i.offset)
-        b = self.wrp.extractPayload(r)
+        b = self.wrp.extractPayload(self.wrp.readRecord(i.filename, i.offset))
         f = open(ret[0], 'wb')
         f.write(b)
         f.close()
@@ -156,8 +157,9 @@ class TwistedApp(QtCore.QObject):
         self.webView.load(QtCore.QUrl(url))
 
 if __name__ == "__main__":
-    # Thanks to https://groups.google.com/forum/#!msg/pyinstaller/fbl5XOOSAtk/zstUlkcHIN4J
-    # This stuff is required for the PyInstaller exe to work.
+    # Thanks to
+    # https://groups.google.com/forum/#!msg/pyinstaller/fbl5XOOSAtk/zstUlkcHIN4J
+    # This is required for the PyInstaller exe to work.
     del sys.modules['twisted.internet.reactor']
     
     app = QtGui.QApplication(sys.argv)
