@@ -7,6 +7,7 @@ from twisted.internet import ssl
 from twisted.web.client import _URI
 from twisted.web._newclient import HTTPParser, ParseError, Request
 
+
 class HTTPServerParser(HTTPParser):
     """
     Parses the headers and content length of an HTTP Request packet
@@ -18,16 +19,19 @@ class HTTPServerParser(HTTPParser):
     def parseContentLength(connHeaders):
         """ Parses the content length from connHeaders """
         contentLengthHeaders = connHeaders.getRawHeaders('content-length')
-        if contentLengthHeaders is not None and len(contentLengthHeaders) == 1:
+        if contentLengthHeaders is None:
+            return None
+        if len(contentLengthHeaders) == 1:
             return int(contentLengthHeaders[0])
         else:
             raise ValueError(
-                          "Too many content-length headers; request is invalid")
-        return None
+                "Too many content-length headers; request is invalid")
     
     def __init__(self, finisher):
         self.finisher = finisher
         self._bodyDecoder = None
+        self.status = None
+        self.contentLength = None
         
     def setBodyDecoder(self, d):
         """ Will call bodyDecoder.dataReceived with raw body data """
@@ -62,6 +66,7 @@ class HTTPServerParser(HTTPParser):
         """ Called with a request after it is parsed """
         pass
 
+
 class WebProxyServerProtocol(HTTPParser):
     """
     Creates a web proxy for HTTP and HTTPS.
@@ -69,7 +74,7 @@ class WebProxyServerProtocol(HTTPParser):
     
     allHeadersReceived -> resume -> (requestParsed -> dataFromServerParser)
     """
-    certinfo = { 'key':'ca.key', 'cert':'ca.crt' }
+    certinfo = {'key': 'ca.key', 'cert': 'ca.crt'}
     serverParser = HTTPServerParser
     
     @staticmethod
@@ -97,12 +102,14 @@ class WebProxyServerProtocol(HTTPParser):
                 port = int(port)
             except ValueError:
                 port = defaultPort
-        return (addr, port)
+        return addr, port
     
     def __init__(self):
         self.useSSL = False
         self._rawDataBuffer = ''
         self._serverParser = None
+        self.status = None
+        self.connect_uri = None
 
     def statusReceived(self, status):
         self.status = status
@@ -122,12 +129,12 @@ class WebProxyServerProtocol(HTTPParser):
         
     def requestParsed(self, request):
         """ Called after self._serverParser parses a Request """
-        print "  Request uri:",request.uri
+        print "  Request uri:", request.uri
         # Wikipedia does not accept absolute URIs:
         request.uri = self.convertUriToRelative(request.uri)
         # Check if any of the Connection connHeaders is 'close'
         conns = map(self._serverParser.connHeaders.getRawHeaders,
-                    ['proxy-connection','connection'])
+                    ['proxy-connection', 'connection'])
         #hasClose = any(map(lambda y: any(map(lambda a: a.lower() == 'close', y)), filter(lambda a: a or False, conns)))
         hasClose = any([x.lower() == 'close' for y in conns if y for x in y])
         # HACK!!! Force close a connection if there is content-length because
@@ -143,7 +150,7 @@ class WebProxyServerProtocol(HTTPParser):
         self._serverParser = self.serverParser(self.serverParserFinished)
         self._serverParser.rawDataReceived = self.dataFromServerParser
         self._serverParser.requestParsed = self.requestParsed
-        self._serverParser.connectionMade() # initializes instance vars
+        self._serverParser.connectionMade()  # initializes instance vars
         
     def serverParserFinished(self, rest):
         assert len(rest) == 0
@@ -167,7 +174,7 @@ class WebProxyServerProtocol(HTTPParser):
             raise ParseError("HTTP status line did not have an absolute uri")
         
         self.connect_uri = connect_uri
-        HTTPParser.allHeadersReceived(self) # self.switchToBodyMode(None)
+        HTTPParser.allHeadersReceived(self)  # self.switchToBodyMode(None)
         
     def allHeadersReceived(self):
         """
@@ -202,6 +209,6 @@ class WebProxyServerProtocol(HTTPParser):
         if self.useSSL:
             self.transport.write('HTTP/1.0 200 Connection established\r\n\r\n')
             ctx = ssl.DefaultOpenSSLContextFactory(
-                                    self.certinfo['key'], self.certinfo['cert'])
+                                self.certinfo['key'], self.certinfo['cert'])
             self.transport.startTLS(ctx)
         self.transport.resumeProducing()

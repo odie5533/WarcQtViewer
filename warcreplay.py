@@ -11,8 +11,10 @@ from hanzo.httptools import RequestMessage, ResponseMessage
 from TwistedWebProxyServer import WebProxyServerProtocol
 from warcmanager import WarcReplayHandler
 
+
 def _copy_attrs(to, frum, attrs):
     map(lambda a: setattr(to, a, getattr(frum, a)), attrs)
+
 
 class WarcReplayProtocol(WebProxyServerProtocol):
     def __init__(self, wrp, *args, **kwargs):
@@ -27,10 +29,11 @@ class WarcReplayProtocol(WebProxyServerProtocol):
         if con_uri.port == (80 if con_uri.scheme == 'http' else 443):
             con_uri.netloc = con_uri.host
         # Copy parameters from the relative req_uri to the con_uri
-        _copy_attrs(con_uri, req_uri, ['path','params','query','fragment'])
+        _copy_attrs(con_uri, req_uri, ['path', 'params', 'query', 'fragment'])
         return con_uri.toBytes()
-    
-    def writeRecordToTransport(self, r, t):
+
+    @staticmethod
+    def writeRecordToTransport(r, t):
         m = ResponseMessage(RequestMessage())
         m.feed(r.content[1])
         m.close()        
@@ -41,7 +44,7 @@ class WarcReplayProtocol(WebProxyServerProtocol):
         old_headers = []
         for k, v in m.header.headers:
             if not k.lower() in ("connection", "content-length",
-                                 "cache-control","accept-ranges", "etag",
+                                 "cache-control", "accept-ranges", "etag",
                                  "last-modified", "transfer-encoding"):
                 new_headers.append((k, v))
             old_headers.append(("X-Archive-Orig-%s" % k, v))
@@ -67,21 +70,24 @@ class WarcReplayProtocol(WebProxyServerProtocol):
         else:
             print "404: ", record_uri
             resp = "URL not found in archives."
-            self.transport.write("HTTP/1.0 404 Not Found\r\n"\
-                                 "Connection: keep-alive\r\n"\
-                                 "Content-Type: text/plain\r\n"\
-                                 "Content-Length: %d\r\n\r\n"\
+            self.transport.write("HTTP/1.0 404 Not Found\r\n"
+                                 "Connection: keep-alive\r\n"
+                                 "Content-Type: text/plain\r\n"
+                                 "Content-Length: %d\r\n\r\n"
                                  "%s\r\n" % (len(resp)+2, resp))
+
 
 class ReplayServerFactory(protocol.ServerFactory):
     protocol = WarcReplayProtocol
     
-    def __init__(self, warcFiles=[], wrp=None):
+    def __init__(self, warc_files=None, wrp=None):
+        if warc_files is None:
+            warc_files = []
         if wrp is not None:
             self.wrp = wrp
         else:
             self.wrp = WarcReplayHandler()
-        for n in warcFiles:
+        for n in warc_files:
             self.wrp.loadWarcFile(n)
     
     def buildProtocol(self, addr):
@@ -89,7 +95,7 @@ class ReplayServerFactory(protocol.ServerFactory):
         p.factory = self
         return p
 
-if __name__=='__main__':
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(
                              description='WarcReplay')
     parser.add_argument('-p', '--port', default='1080',
@@ -99,7 +105,7 @@ if __name__=='__main__':
     args = parser.parse_args()
     args.port = int(args.port)
 
-    rsf = ReplayServerFactory(warcFiles=[args.warc])
+    rsf = ReplayServerFactory(warc_files=[args.warc])
     reactor.listenTCP(args.port, rsf)
     print "Proxy running on port", args.port
     reactor.run()

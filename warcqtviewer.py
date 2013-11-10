@@ -1,12 +1,11 @@
-import zlib
+# Copyright (c) 2013 David Bern
+
+
 import sys, os
 
 from PySide import QtCore, QtGui, QtUiTools, QtWebKit, QtNetwork
 from PySide import QtXml # Necessary for py2exe @UnusedImport
 import pkg_resources  # Necessary for py2exe. Used by warctools @UnusedImport
-
-from hanzo.warctools import WarcRecord
-from hanzo.httptools import RequestMessage, ResponseMessage
 
 from warcmanager import MetaRecordInfo, WarcReplayHandler, dump
 from warcreplay import ReplayServerFactory
@@ -65,6 +64,8 @@ class TwistedApp(QtCore.QObject):
         
     @staticmethod
     def getBaseDir():
+        """ The basedir changes if the application is running from a
+        PyInstaller onefile """
         if getattr(sys, 'frozen', False) and getattr(sys, '_MEIPASS', False):
             return sys._MEIPASS  # @UndefinedVariable
         else:
@@ -89,11 +90,13 @@ class TwistedApp(QtCore.QObject):
         reply.ignoreSslErrors()
         
     def showItem(self, index):
+        """ Called when an item is single-clicked """
         i = index.model().itemFromIndex(index) # QStandardItem
         r = self.wrp.readRecord(i.filename, i.offset)
         self.ui.plainTextEdit.setPlainText(dump(r))
         
     def previewItem(self, index):
+        """ Called when an item is double-clicked """
         i = index.model().itemFromIndex(index) # QStandardItem
         self.showWebView()
         self.gotoUrl(i.uri)
@@ -121,36 +124,28 @@ class TwistedApp(QtCore.QObject):
         return n
 
     def actionExtract(self):
+        """ Called when the Extract button is pressed in the menu """
         item = self.ui.listView.selectionModel().currentIndex()
         if not item or not item.model():
             print "No item selected for extraction"
             return
         i = item.model().itemFromIndex(item)
         
-        if not i or i.rtype != WarcRecord.RESPONSE:
+        if not i or i.rtype != 'response':
             print "Please select a response record to extract"
             return
-        r = self.wrp.readRecord(i.filename, i.offset)
-        m = ResponseMessage(RequestMessage())
-        m.feed(r.content[1])
-        m.close()
         ret = QtGui.QFileDialog.getSaveFileName(None,
-                      "Save url response from " + r.url,
-                      self.urlToFilename(r.url),
+                      "Save url response from " + i.uri,
+                      self.urlToFilename(i.uri),
                       "")
         if not ret or not ret[0]:
             return
-        b = m.get_body()
         
-        z = zlib.decompressobj(16 + zlib.MAX_WBITS)
-        try:
-            b = z.decompress(b)
-        except zlib.error:
-            pass
-        
+        r = self.wrp.readRecord(i.filename, i.offset)
+        b = self.wrp.extractPayload(r)
         f = open(ret[0], 'wb')
         f.write(b)
-        f.close()        
+        f.close()
         
     def showWebView(self):
         if not self.webViewShowing:
