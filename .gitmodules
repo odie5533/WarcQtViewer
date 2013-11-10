@@ -1,0 +1,3 @@
+[submodule "warcreplay"]
+	path = warcreplay
+	url = https://github.com/odie5533/WarcReplay.git

@@ -1,14 +1,15 @@
 # Copyright (c) 2013 David Bern
 
 
-import sys, os
+import sys
+import os
 
 from PySide import QtCore, QtGui, QtUiTools, QtWebKit, QtNetwork
 from PySide import QtXml # Necessary for py2exe @UnusedImport
 import pkg_resources  # Necessary for py2exe. Used by warctools @UnusedImport
 
-from warcmanager import MetaRecordInfo, WarcReplayHandler, dump
-from warcreplay import ReplayServerFactory
+from warcreplay.warcmanager import MetaRecordInfo, WarcReplayHandler, dump
+from warcreplay.warcreplay import ReplayServerFactory
 
 class WarcRecordItem(QtGui.QStandardItem, MetaRecordInfo):
     def __init__(self, *args, **kwargs):
