@@ -68,8 +68,9 @@ class TwistedApp(QtCore.QObject):
         
     @staticmethod
     def getBaseDir():
-        """ The basedir changes if the application is running from a
-        PyInstaller onefile """
+        """
+        Basedir changes if the application is running from a PyInstaller onefile
+        """
         if getattr(sys, 'frozen', False) and getattr(sys, '_MEIPASS', False):
             return sys._MEIPASS  # @UndefinedVariable
         else:
@@ -93,8 +94,9 @@ class TwistedApp(QtCore.QObject):
         nam.setProxy(proxy)
         nam.sslErrors.connect(self.sslErrorHandler)
         return w
-    
-    def sslErrorHandler(self, reply, _):
+
+    @staticmethod
+    def sslErrorHandler(reply, _):
         """
         :type reply: QtNetwork.QNetworkReply
         """
@@ -159,14 +161,14 @@ class TwistedApp(QtCore.QObject):
             print "Please select a response record to extract"
             return
         title = "Save url response from " + i.uri
-        ret = QtGui.QFileDialog.getSaveFileName(None, title,
-                                                self.urlToFilename(i.uri),
-                                                "")
-        if not ret or not ret[0]:
+        f, _ = QtGui.QFileDialog.getSaveFileName(None, title,
+                                                 self.urlToFilename(i.uri),
+                                                 "")
+        if not f:
             return
         
         b = self.wrp.extractPayload(self.wrp.readRecord(i.filename, i.offset))
-        f = open(ret[0], 'wb')
+        f = open(f, 'wb')
         f.write(b)
         f.close()
         
